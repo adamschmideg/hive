@@ -16,10 +16,6 @@ func init() {
 	flag.StringVar(&enodeID, "enode", "", "enode:... as per `admin.nodeInfo.enode`")
 }
 
-type v4CompatID struct {
-	enode.V4ID
-}
-
 //ripped out from the urlv4 code
 func signV4Compat(r *enr.Record, pubkey *ecdsa.PublicKey) {
 	r.Set((*enode.Secp256k1)(pubkey))
@@ -66,6 +62,15 @@ func MakeNode(pubkey *ecdsa.PublicKey, ip net.IP, tcp, udp int, mac *string) *en
 	return n
 }
 
+type v4CompatID struct {
+	enode.V4ID
+}
+
+func (v4CompatID) Verify(r *enr.Record, sig []byte) error {
+	var pubkey enode.Secp256k1
+	return r.Load(&pubkey)
+}
+
 func TestDiscV4(t *testing.T) {
 	targetNode, err := enode.ParseV4(enodeID)
 	if err != nil {
@@ -76,7 +81,8 @@ func TestDiscV4(t *testing.T) {
 	if err != nil {
 		t.Error("No mac address")
 	}
-	macAddr := macAddresses[0]
+	macAddr := macAddresses[7]
+
 	targetNode = MakeNode(targetNode.Pubkey(), ipAddr, targetNode.TCP(), 30303, &macAddr)
 
 	//v4udp := setupv4UDP(t)

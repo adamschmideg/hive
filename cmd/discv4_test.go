@@ -172,9 +172,11 @@ func TestDiscV4(t *testing.T) {
 		name        string
 		description string
 	}
-	pingTests := []test {
+	pingTests := []test{
 		{"Ping-BasicTest(v4001)",
-		"Sends a 'ping' from an unknown source, expects a 'pong' back"},
+			"Sends a 'ping' from an unknown source, expects a 'pong' back"},
+		{"Ping-SourceUnknownrongTo(v4002)",
+			"Does a ping with incorrect 'to', expects a pong back"},
 	}
 	// Run tests
 	for _, tc := range pingTests {

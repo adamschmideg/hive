@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/ecdsa"
 	"flag"
-	"fmt"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -146,13 +145,14 @@ func TestDiscV4(t *testing.T) {
 	if err != nil {
 		t.Error(err, enodeID)
 	}
-	ipAddr := targetNode.IP()
+	ipAddr := net.ParseIP("127.0.0.1")
 	macAddresses, err := getMacAddr()
 	if err != nil {
 		t.Error("No mac address")
 	}
 	macAddr := macAddresses[7]
 	targetNode = MakeNode(targetNode.Pubkey(), ipAddr, targetNode.TCP(), 30303, &macAddr)
+	t.Log("targetNode", targetNode)
 
 	// Prep for calling ping
 	v4udp := setupv4UDP(t)
@@ -161,8 +161,9 @@ func TestDiscV4(t *testing.T) {
 		Port: targetNode.UDP(),
 	}
 	recoveryCallback := func(e *ecdsa.PublicKey) {
-		fmt.Println("pubkey", &e)
+		t.Log("pubkey", &e)
 	}
+	t.Log("Ping", targetNode.ID(), udpAddr)
 	if err := v4udp.Ping(targetNode.ID(), udpAddr, true, recoveryCallback); err != nil {
 		t.Fatal("Cannot ping", err)
 	}

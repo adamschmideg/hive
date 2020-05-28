@@ -141,6 +141,7 @@ func setupv4UDP(l common.Logger) devp2p.V4Udp {
 }
 
 func TestDiscV4(t *testing.T) {
+	// Set up target node
 	targetNode, err := enode.ParseV4(enodeID)
 	if err != nil {
 		t.Error(err, enodeID)
@@ -151,12 +152,10 @@ func TestDiscV4(t *testing.T) {
 		t.Error("No mac address")
 	}
 	macAddr := macAddresses[7]
-
 	targetNode = MakeNode(targetNode.Pubkey(), ipAddr, targetNode.TCP(), 30303, &macAddr)
 
+	// Prep for calling ping
 	v4udp := setupv4UDP(t)
-	t.Error("instance", v4udp)
-
 	udpAddr := &net.UDPAddr{
 		IP:   targetNode.IP(),
 		Port: targetNode.UDP(),

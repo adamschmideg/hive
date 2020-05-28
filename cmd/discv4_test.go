@@ -164,14 +164,24 @@ func TestDiscV4(t *testing.T) {
 	// Prep for calling ping
 	v4udp := setupv4UDP(t)
 	udpAddr := &net.UDPAddr{
-		IP:   targetNode.IP(),
-		Port: targetNode.UDP(),
+		IP:   ipAddr,
+		Port: udpPort,
 	}
-	recoveryCallback := func(e *ecdsa.PublicKey) {
-		t.Log("pubkey", &e)
+
+	type test struct {
+		name        string
+		description string
 	}
-	t.Log("Ping", targetNode.ID(), udpAddr)
-	if err := v4udp.Ping(targetNode.ID(), udpAddr, true, recoveryCallback); err != nil {
-		t.Fatal("Cannot ping", err)
+	pingTests := []test {
+		{"Ping-BasicTest(v4001)",
+		"Sends a 'ping' from an unknown source, expects a 'pong' back"},
+	}
+	// Run tests
+	for _, tc := range pingTests {
+		t.Log("Ping", tc)
+		if err := v4udp.Ping(targetNode.ID(), udpAddr, true, nil); err != nil {
+			t.Fatal("Failed", tc.name, err)
+		}
+
 	}
 }

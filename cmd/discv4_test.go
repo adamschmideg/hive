@@ -3,17 +3,28 @@ package main
 import (
 	"crypto/ecdsa"
 	"flag"
+	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethereum/go-ethereum/p2p/nat"
+	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/hive/simulators/common"
+	"github.com/ethereum/hive/simulators/devp2p"
 	"net"
 	"testing"
 )
 
-var enodeID string
+var (
+	enodeID    string
+	listenPort string
+	natdesc    string
+)
 
 func init() {
 	flag.StringVar(&enodeID, "enode", "", "enode:... as per `admin.nodeInfo.enode`")
+	flag.StringVar(&listenPort, "listenPort", ":30304", "")
+	flag.StringVar(&natdesc, "nat", "any", "port mapping mechanism (any|none|upnp|pmp|extip:<IP>)")
 }
 
 //ripped out from the urlv4 code
@@ -71,6 +82,63 @@ func (v4CompatID) Verify(r *enr.Record, sig []byte) error {
 	return r.Load(&pubkey)
 }
 
+func setupv4UDP(l common.Logger) devp2p.V4Udp {
+	var nodeKey *ecdsa.PrivateKey
+	var restrictList *netutil.Netlist
+
+	//Resolve an address (eg: ":port") to a UDP endpoint.
+	addr, err := net.ResolveUDPAddr("udp", listenPort)
+	if err != nil {
+		panic(err)
+	}
+
+	//Create a UDP connection
+
+	//wrap this 'listener' into a conn
+	//but
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		utils.Fatalf("-ListenUDP: %v", err)
+	}
+
+	//The following just gets the local address, does something with NAT and converts into a
+	//general address type.
+	natm, err := nat.Parse(natdesc)
+	if err != nil {
+		utils.Fatalf("-nat: %v", err)
+	}
+	realaddr := conn.LocalAddr().(*net.UDPAddr)
+	if natm != nil {
+		if !realaddr.IP.IsLoopback() {
+			go nat.Map(natm, nil, "udp", realaddr.Port, realaddr.Port, "ethereum discovery")
+		}
+
+		if ext, err := natm.ExternalIP(); err == nil {
+			realaddr = &net.UDPAddr{IP: ext, Port: realaddr.Port}
+		}
+	}
+
+	nodeKey, err = crypto.GenerateKey()
+
+	if err != nil {
+		utils.Fatalf("could not generate key: %v", err)
+	}
+
+	cfg := devp2p.Config{
+		PrivateKey:   nodeKey,
+		AnnounceAddr: realaddr,
+		NetRestrict:  restrictList,
+	}
+
+	var v4UDP *devp2p.V4Udp
+
+	if v4UDP, err = devp2p.ListenUDP(conn, cfg, l); err != nil {
+		panic(err)
+	}
+
+	return *v4UDP
+}
+
 func TestDiscV4(t *testing.T) {
 	targetNode, err := enode.ParseV4(enodeID)
 	if err != nil {
@@ -85,6 +153,14 @@ func TestDiscV4(t *testing.T) {
 
 	targetNode = MakeNode(targetNode.Pubkey(), ipAddr, targetNode.TCP(), 30303, &macAddr)
 
-	//v4udp := setupv4UDP(t)
-	//v4udp.Ping()
+	v4udp := setupv4UDP(t)
+	t.Error("instance", v4udp)
+
+	udpAddr := &net.UDPAddr{
+		IP:   targetNode.IP(),
+		Port: targetNode.UDP(),
+	}
+	if err := v4udp.Ping(targetNode.ID(), udpAddr, true, nil); err != nil {
+		t.Fatal("Cannot ping", err)
+	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ecdsa"
 	"flag"
+	"fmt"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -160,7 +161,10 @@ func TestDiscV4(t *testing.T) {
 		IP:   targetNode.IP(),
 		Port: targetNode.UDP(),
 	}
-	if err := v4udp.Ping(targetNode.ID(), udpAddr, true, nil); err != nil {
+	recoveryCallback := func(e *ecdsa.PublicKey) {
+		fmt.Println("pubkey", &e)
+	}
+	if err := v4udp.Ping(targetNode.ID(), udpAddr, true, recoveryCallback); err != nil {
 		t.Fatal("Cannot ping", err)
 	}
 }

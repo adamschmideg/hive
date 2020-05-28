@@ -145,13 +145,20 @@ func TestDiscV4(t *testing.T) {
 	if err != nil {
 		t.Error(err, enodeID)
 	}
-	ipAddr := net.ParseIP("127.0.0.1")
+	ipAddr := targetNode.IP()
+	if ipAddr == nil {
+		ipAddr = net.ParseIP("127.0.0.1")
+	}
+	udpPort := targetNode.UDP()
+	if udpPort == 0 {
+		udpPort = 30303
+	}
 	macAddresses, err := getMacAddr()
 	if err != nil {
 		t.Error("No mac address")
 	}
 	macAddr := macAddresses[7]
-	targetNode = MakeNode(targetNode.Pubkey(), ipAddr, targetNode.TCP(), 30303, &macAddr)
+	targetNode = MakeNode(targetNode.Pubkey(), ipAddr, targetNode.TCP(), udpPort, &macAddr)
 	t.Log("targetNode", targetNode)
 
 	// Prep for calling ping

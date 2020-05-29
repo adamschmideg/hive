@@ -173,7 +173,6 @@ func TestDiscV4(t *testing.T) {
 		name            string
 		description     string
 		fromAddr        *net.UDPAddr
-		toID            enode.ID
 		toAddr          *net.UDPAddr
 		expirationUnits int
 	}
@@ -181,26 +180,24 @@ func TestDiscV4(t *testing.T) {
 		{"Ping-BasicTest(v4001)",
 			"Sends a 'ping' from an unknown source, expects a 'pong' back",
 			ourAddr,
-			targetNode.ID(),
 			targetAddr,
 			1},
 		{"Ping-SourceUnknownrongTo(v4002)",
 			"Does a ping with incorrect 'to', expects a pong back",
 			ourAddr,
-			targetNode.ID(),
 			badAddr,
 			1},
 		{"Ping-SourceUnknownWrongFrom(v4003)",
 			"Sends a 'ping' with incorrect from field. Expect a valid 'pong' back - a bad 'from' should be ignored",
 			badAddr,
-			targetNode.ID(),
 			targetAddr,
 			1},
 	}
 	// Run tests
 	for _, tc := range pingTests {
-		t.Log("Ping", tc.description)
-		if err := v4udp.GenericPing(tc.fromAddr, tc.toID, tc.toAddr, tc.expirationUnits); err != nil {
+		req := devp2p.MakePing(tc.fromAddr, tc.toAddr, tc.expirationUnits)
+		t.Log("Ping", req, tc.description)
+		if err := v4udp.GenericPing(targetNode.ID(), targetAddr, req); err != nil {
 			t.Error("Failed", tc.name, err)
 			continue
 		}

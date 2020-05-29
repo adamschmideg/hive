@@ -309,20 +309,18 @@ func (t *V4Udp) close() {
 
 }
 
-func (t *V4Udp) GenericPing(fromAddr *net.UDPAddr, toID enode.ID, toAddr *net.UDPAddr, expirationUnits int) error {
-	t.conn.LocalAddr()
-	from := makeEndpoint(fromAddr, 0)
-	to := makeEndpoint(toAddr, 0)
+func MakePing(fromAddr *net.UDPAddr, toAddr *net.UDPAddr, expirationUnits int) *ping {
 	// Yes, this is lame, but that's how you can multiply a duration with a number
 	expirationDelta := expiration * time.Duration(expirationUnits)
-
-	req := &ping{
+	return &ping{
 		Version:    4,
-		From:       from,
-		To:         to, // TODO: maybe use known TCP port from DB
+		From:       makeEndpoint(fromAddr, 0),
+		To:         makeEndpoint(toAddr, 0), // TODO: maybe use known TCP port from DB
 		Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
 	}
+}
 
+func (t *V4Udp) GenericPing(toID enode.ID, toAddr *net.UDPAddr, req *ping) error {
 	packet, hash, err := encodePacket(t.priv, pingPacket, req)
 	if err != nil {
 		return err

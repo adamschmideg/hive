@@ -82,7 +82,7 @@ func (v4CompatID) Verify(r *enr.Record, sig []byte) error {
 	return r.Load(&pubkey)
 }
 
-func setupv4UDP(l common.Logger) devp2p.V4Udp {
+func setupv4UDP(l common.Logger) (devp2p.V4Udp, *net.UDPAddr) {
 	var nodeKey *ecdsa.PrivateKey
 	var restrictList *netutil.Netlist
 
@@ -136,7 +136,7 @@ func setupv4UDP(l common.Logger) devp2p.V4Udp {
 		panic(err)
 	}
 
-	return *v4UDP
+	return *v4UDP, realaddr
 }
 
 func TestDiscV4(t *testing.T) {
@@ -162,40 +162,49 @@ func TestDiscV4(t *testing.T) {
 	t.Log("targetNode", targetNode)
 
 	// Prep for calling ping
-	v4udp := setupv4UDP(t)
-	udpAddr := &net.UDPAddr{
+	v4udp, ourAddr := setupv4UDP(t)
+	targetAddr := &net.UDPAddr{
 		IP:   ipAddr,
 		Port: udpPort,
 	}
 
+	badAddr := &net.UDPAddr{IP: []byte{0, 1, 2, 3}, Port: 1}
 	type test struct {
 		name            string
 		description     string
-		from            devp2p.RpcEndpoint
-		toid            enode.ID
-		toaddr          *net.UDPAddr
+		fromAddr        *net.UDPAddr
+		toID            enode.ID
+		toAddr          *net.UDPAddr
 		expirationUnits int
 	}
 	pingTests := []test{
 		{"Ping-BasicTest(v4001)",
 			"Sends a 'ping' from an unknown source, expects a 'pong' back",
-			v4udp.OurEndpoint,
+			ourAddr,
 			targetNode.ID(),
-			udpAddr,
+			targetAddr,
 			1},
 		{"Ping-SourceUnknownrongTo(v4002)",
 			"Does a ping with incorrect 'to', expects a pong back",
-			v4udp.OurEndpoint,
+			ourAddr,
 			targetNode.ID(),
-			&net.UDPAddr{IP: []byte{0, 1, 2, 3}, Port: 1},
+			badAddr,
+			1},
+		{"Ping-SourceUnknownWrongFrom(v4003)",
+			"Sends a 'ping' with incorrect from field. Expect a valid 'pong' back - a bad 'from' should be ignored",
+			badAddr,
+			targetNode.ID(),
+			targetAddr,
 			1},
 	}
 	// Run tests
 	for _, tc := range pingTests {
 		t.Log("Ping", tc.description)
-		if err := v4udp.GenericPing(v4udp.OurEndpoint, targetNode.ID(), udpAddr, 1); err != nil {
-			t.Fatal("Failed", tc.name, err)
+		if err := v4udp.GenericPing(tc.fromAddr, tc.toID, tc.toAddr, tc.expirationUnits); err != nil {
+			t.Error("Failed", tc.name, err)
+			continue
 		}
+		t.Log("Passed", tc.name)
 
 	}
 }

@@ -309,6 +309,45 @@ func (t *V4Udp) close() {
 
 }
 
+func (t *V4Udp) GenericPing(fromAddr *net.UDPAddr, toID enode.ID, toAddr *net.UDPAddr, expirationUnits int) error {
+	t.conn.LocalAddr()
+	from := makeEndpoint(fromAddr, 0)
+	to := makeEndpoint(toAddr, 0)
+	// Yes, this is lame, but that's how you can multiply a duration with a number
+	expirationDelta := expiration * time.Duration(expirationUnits)
+
+	req := &ping{
+		Version:    4,
+		From:       from,
+		To:         to, // TODO: maybe use known TCP port from DB
+		Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
+	}
+
+	packet, hash, err := encodePacket(t.priv, pingPacket, req)
+	if err != nil {
+		return err
+	}
+
+	//expect the usual ping stuff - a bad 'from' should be ignored
+	t.l.Log("Establishing criteria: Will succeed only if a valid pong is received.")
+	callback := func(p reply) error {
+		if p.ptype == pongPacket {
+			inPacket := p.data.(incomingPacket)
+			if !bytes.Equal(inPacket.packet.(*pong).ReplyTok, hash) {
+				return ErrUnsolicitedReply
+			}
+
+			if toID != inPacket.recoveredID.id() {
+				return ErrUnknownNode
+			}
+			return nil
+		}
+		return ErrPacketMismatch
+
+	}
+	return <-t.sendPacket(toID, toAddr, req, packet, callback)
+}
+
 //SpoofedPing - verify that the faked udp packets are being sent, received, and responses relayed correctly.
 func (t *V4Udp) SpoofedPing(toid enode.ID, tomac string, toaddr *net.UDPAddr, fromaddr *net.UDPAddr, validateEnodeID bool, recoveryCallback func(e *ecdsa.PublicKey), netInterface string) error {
 
@@ -432,43 +471,6 @@ func (t *V4Udp) SpoofingFindNodeCheck(toid enode.ID, tomac string, toaddr *net.U
 
 	return <-t.sendSpoofedPacket(toid, toaddr, fromaddr, findreq, findpacket, tomac, callback, netInterface)
 
-}
-
-func (t *V4Udp) GenericPing(from RpcEndpoint, toid enode.ID, toaddr *net.UDPAddr, expirationUnits int64) error {
-	to := makeEndpoint(toaddr, 0)
-	// Yes, this is lame, but that's how you can multiply a duration with a number
-	expirationDelta := expiration * time.Duration(expirationUnits)
-
-	req := &ping{
-		Version:    4,
-		From:       from,
-		To:         to, // TODO: maybe use known TCP port from DB
-		Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
-	}
-
-	packet, hash, err := encodePacket(t.priv, pingPacket, req)
-	if err != nil {
-		return err
-	}
-
-	//expect the usual ping stuff - a bad 'from' should be ignored
-	t.l.Log("Establishing criteria: Will succeed only if a valid pong is received.")
-	callback := func(p reply) error {
-		if p.ptype == pongPacket {
-			inPacket := p.data.(incomingPacket)
-			if !bytes.Equal(inPacket.packet.(*pong).ReplyTok, hash) {
-				return ErrUnsolicitedReply
-			}
-
-			if toid != inPacket.recoveredID.id() {
-				return ErrUnknownNode
-			}
-			return nil
-		}
-		return ErrPacketMismatch
-
-	}
-	return <-t.sendPacket(toid, toaddr, req, packet, callback)
 }
 
 //Ping sends a ping message to the given node and waits for a reply.

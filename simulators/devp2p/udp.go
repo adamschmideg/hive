@@ -82,7 +82,7 @@ const (
 type (
 	ping struct {
 		Version    uint
-		From, To   rpcEndpoint
+		From, To   RpcEndpoint
 		Expiration uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
@@ -90,7 +90,7 @@ type (
 
 	pingExtra struct {
 		Version    uint
-		From, To   rpcEndpoint
+		From, To   RpcEndpoint
 		Expiration uint64
 		JunkData1  uint
 		JunkData2  []byte
@@ -103,7 +103,7 @@ type (
 		// This field should mirror the UDP envelope address
 		// of the ping packet, which provides a way to discover the
 		// the external address (after NAT).
-		To rpcEndpoint
+		To RpcEndpoint
 
 		ReplyTok   []byte // This contains the hash of the ping packet.
 		Expiration uint64 // Absolute timestamp at which the packet becomes invalid.
@@ -139,19 +139,19 @@ type (
 		ID  encPubkey
 	}
 
-	rpcEndpoint struct {
+	RpcEndpoint struct {
 		IP  net.IP // len 4 for IPv4 or 16 for IPv6
 		UDP uint16 // for discovery protocol
 		TCP uint16 // for RLPx protocol
 	}
 )
 
-func makeEndpoint(addr *net.UDPAddr, tcpPort uint16) rpcEndpoint {
+func makeEndpoint(addr *net.UDPAddr, tcpPort uint16) RpcEndpoint {
 	ip := addr.IP.To4()
 	if ip == nil {
 		ip = addr.IP.To16()
 	}
-	return rpcEndpoint{IP: ip, UDP: uint16(addr.Port), TCP: tcpPort}
+	return RpcEndpoint{IP: ip, UDP: uint16(addr.Port), TCP: tcpPort}
 }
 
 func (t *V4Udp) nodeFromRPC(sender *net.UDPAddr, rn rpcNode) (*node, error) {
@@ -199,7 +199,7 @@ type V4Udp struct {
 	conn        conn
 	netrestrict *netutil.Netlist
 	priv        *ecdsa.PrivateKey
-	OurEndpoint rpcEndpoint
+	OurEndpoint RpcEndpoint
 
 	addpending chan *pending
 	gotreply   chan reply
@@ -432,6 +432,43 @@ func (t *V4Udp) SpoofingFindNodeCheck(toid enode.ID, tomac string, toaddr *net.U
 
 	return <-t.sendSpoofedPacket(toid, toaddr, fromaddr, findreq, findpacket, tomac, callback, netInterface)
 
+}
+
+func (t *V4Udp) GenericPing(from RpcEndpoint, toid enode.ID, toaddr *net.UDPAddr, expirationUnits int64) error {
+	to := makeEndpoint(toaddr, 0)
+	// Yes, this is lame, but that's how you can multiply a duration with a number
+	expirationDelta := expiration * time.Duration(expirationUnits)
+
+	req := &ping{
+		Version:    4,
+		From:       from,
+		To:         to, // TODO: maybe use known TCP port from DB
+		Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
+	}
+
+	packet, hash, err := encodePacket(t.priv, pingPacket, req)
+	if err != nil {
+		return err
+	}
+
+	//expect the usual ping stuff - a bad 'from' should be ignored
+	t.l.Log("Establishing criteria: Will succeed only if a valid pong is received.")
+	callback := func(p reply) error {
+		if p.ptype == pongPacket {
+			inPacket := p.data.(incomingPacket)
+			if !bytes.Equal(inPacket.packet.(*pong).ReplyTok, hash) {
+				return ErrUnsolicitedReply
+			}
+
+			if toid != inPacket.recoveredID.id() {
+				return ErrUnknownNode
+			}
+			return nil
+		}
+		return ErrPacketMismatch
+
+	}
+	return <-t.sendPacket(toid, toaddr, req, packet, callback)
 }
 
 //Ping sends a ping message to the given node and waits for a reply.

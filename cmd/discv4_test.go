@@ -169,19 +169,31 @@ func TestDiscV4(t *testing.T) {
 	}
 
 	type test struct {
-		name        string
-		description string
+		name            string
+		description     string
+		from            devp2p.RpcEndpoint
+		toid            enode.ID
+		toaddr          *net.UDPAddr
+		expirationUnits int
 	}
 	pingTests := []test{
 		{"Ping-BasicTest(v4001)",
-			"Sends a 'ping' from an unknown source, expects a 'pong' back"},
+			"Sends a 'ping' from an unknown source, expects a 'pong' back",
+			v4udp.OurEndpoint,
+			targetNode.ID(),
+			udpAddr,
+			1},
 		{"Ping-SourceUnknownrongTo(v4002)",
-			"Does a ping with incorrect 'to', expects a pong back"},
+			"Does a ping with incorrect 'to', expects a pong back",
+			v4udp.OurEndpoint,
+			targetNode.ID(),
+			&net.UDPAddr{IP: []byte{0, 1, 2, 3}, Port: 1},
+			1},
 	}
 	// Run tests
 	for _, tc := range pingTests {
-		t.Log("Ping", tc)
-		if err := v4udp.Ping(targetNode.ID(), udpAddr, true, nil); err != nil {
+		t.Log("Ping", tc.description)
+		if err := v4udp.GenericPing(v4udp.OurEndpoint, targetNode.ID(), udpAddr, 1); err != nil {
 			t.Fatal("Failed", tc.name, err)
 		}
 

@@ -187,6 +187,10 @@ type packet interface {
 	name() string
 }
 
+type named interface {
+	name() string
+}
+
 type conn interface {
 	ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error)
 	WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error)
@@ -309,19 +313,30 @@ func (t *V4Udp) close() {
 
 }
 
-func MakePing(fromAddr *net.UDPAddr, toAddr *net.UDPAddr, expirationUnits int) *ping {
+func MakePing(fromAddr *net.UDPAddr, toAddr *net.UDPAddr, expirationUnits int, extraData bool) named {
 	// Yes, this is lame, but that's how you can multiply a duration with a number
 	expirationDelta := expiration * time.Duration(expirationUnits)
-	return &ping{
-		Version:    4,
-		From:       makeEndpoint(fromAddr, 0),
-		To:         makeEndpoint(toAddr, 0), // TODO: maybe use known TCP port from DB
-		Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
+	if extraData {
+		return &ping{
+			Version:    4,
+			From:       makeEndpoint(fromAddr, 0),
+			To:         makeEndpoint(toAddr, 0), // TODO: maybe use known TCP port from DB
+			Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
+		}
+	} else {
+		return &pingExtra{
+			Version:    4,
+			From:       makeEndpoint(fromAddr, 0),
+			To:         makeEndpoint(toAddr, 0), // TODO: maybe use known TCP port from DB
+			JunkData1:  42,
+			JunkData2:  []byte{9, 8, 7, 6, 5, 4, 3, 2, 1},
+			Expiration: uint64(time.Now().Add(expirationDelta).Unix()),
+		}
 	}
 }
 
-func (t *V4Udp) GenericPing(toID enode.ID, toAddr *net.UDPAddr, req *ping) error {
-	packet, hash, err := encodePacket(t.priv, pingPacket, req)
+func (t *V4Udp) GenericPing(toID enode.ID, toAddr *net.UDPAddr, req named, ptype byte) error {
+	packet, hash, err := encodePacket(t.priv, ptype, req)
 	if err != nil {
 		return err
 	}
@@ -939,7 +954,7 @@ func (t *V4Udp) BondedSourceFindNeighboursPastExpiration(toid enode.ID, toaddr *
 
 }
 
-func (t *V4Udp) sendPacket(toid enode.ID, toaddr *net.UDPAddr, req packet, packet []byte, callback func(reply) error) <-chan error {
+func (t *V4Udp) sendPacket(toid enode.ID, toaddr *net.UDPAddr, req named, packet []byte, callback func(reply) error) <-chan error {
 
 	t.l.Logf("Sending packet %s to enode %s with target endpoint %v", req.name(), toid, toaddr)
 	errc := t.pending(toid, callback)
@@ -1355,6 +1370,8 @@ func (req *pong) handle(t *V4Udp, from *net.UDPAddr, fromKey encPubkey, mac []by
 
 	return nil
 }
+
+func (req *pingExtra) name() string { return "PING/v4" }
 
 func (req *pong) name() string { return "PONG/v4" }
 

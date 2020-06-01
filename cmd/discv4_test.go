@@ -21,6 +21,11 @@ var (
 	natdesc    string
 )
 
+const (
+	PingPacket     = 1
+	GarbagePacket8 = 8
+)
+
 func init() {
 	flag.StringVar(&enodeID, "enode", "", "enode:... as per `admin.nodeInfo.enode`")
 	flag.StringVar(&listenPort, "listenPort", ":30304", "")
@@ -175,31 +180,78 @@ func TestDiscV4(t *testing.T) {
 		fromAddr        *net.UDPAddr
 		toAddr          *net.UDPAddr
 		expirationUnits int
+		ptype           byte
+		extraData       bool
 	}
 	pingTests := []test{
 		{"Ping-BasicTest(v4001)",
 			"Sends a 'ping' from an unknown source, expects a 'pong' back",
 			ourAddr,
 			targetAddr,
-			1},
+			1,
+			PingPacket,
+			false},
 		{"Ping-SourceUnknownrongTo(v4002)",
 			"Does a ping with incorrect 'to', expects a pong back",
 			ourAddr,
 			badAddr,
-			1},
+			1,
+			PingPacket,
+			false},
 		{"Ping-SourceUnknownWrongFrom(v4003)",
 			"Sends a 'ping' with incorrect from field. Expect a valid 'pong' back - a bad 'from' should be ignored",
 			badAddr,
 			targetAddr,
-			1},
+			1,
+			PingPacket,
+			false},
+
+		{"Ping-SourceUnknownExtraData(v4004)",
+			"Sends a 'ping' with a 'future format' packet containing extra fields. Expects a valid 'pong' back",
+			ourAddr,
+			targetAddr,
+			1,
+			PingPacket,
+			true},
+		{"Ping-SourceUnknownExtraDataWrongFrom(v4005)",
+			"Sends 'ping' with a 'future format' packet containing extra fields and make sure it works even with the wrong 'from' field. Expects a valid 'pong' back",
+			badAddr,
+			targetAddr,
+			1,
+			PingPacket,
+			true},
+		{"Ping-SourceUnknownWrongPacketType(v4006)",
+			"PingTargetWrongPacketType send a packet (a ping packet, though it could be something else) with an unknown packet type to the client and" +
+				"see how the target behaves. Expects the target to not send any kind of response.",
+			ourAddr,
+			targetAddr,
+			1,
+			GarbagePacket8,
+			false},
+		/*
+			{"Ping-BondedFromSignatureMismatch(v4009)",
+				"Ping node under test, from an already bonded node, but the 'ping' has a bad from-field. " +
+					"Expects the target to ignore the bad 'from' and respond with a valid pong.",
+				ourAddr,
+				targetAddr,
+				1},
+		*/
+		{"Ping-PastExpiration(v4011)",
+			"Sends a 'ping' with past expiration, expects no response from the target.",
+			ourAddr,
+			targetAddr,
+			-1,
+			PingPacket,
+			false},
 	}
 	// Run tests
 	for _, tc := range pingTests {
-		req := devp2p.MakePing(tc.fromAddr, tc.toAddr, tc.expirationUnits)
+		req := devp2p.MakePing(tc.fromAddr, tc.toAddr, tc.expirationUnits, tc.extraData)
 		t.Log("Ping", req, tc.description)
-		if err := v4udp.GenericPing(targetNode.ID(), targetAddr, req); err != nil {
+		if err := v4udp.GenericPing(targetNode.ID(), targetAddr, req, tc.ptype); err != nil {
 			t.Error("Failed", tc.name, err)
-			continue
+			//continue
+			t.FailNow()
 		}
 		t.Log("Passed", tc.name)
 
